@@ -133,7 +133,7 @@ tags: dubbo
 
 + 基于 NIO 的非阻塞实现并行调用，客户端不需要启动多线程即可完成并行调用多个远程服务， 相对多线程开销较小
 
-  ![](http://7xjcj5.com1.z0.glb.clouddn.com/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20180523203445.png)
+  ![](https://api.superbed.cn/pic/5c3bfd929dc6d6264c4a7c2e)
 
   ```xml
   <dubbo:reference id="asyncService" interface="com.alibaba.dubbo.examples.async.api.AsyncService" async="true"/>
@@ -145,7 +145,7 @@ tags: dubbo
 
 + 远程服务后，客户端通常只剩下接口，而实现全在服务器端，但提供方有些时候想在客户端也执行部分逻辑，那么就在服务消费者这一端提供了一个Stub类，然后当消费者调用provider方提供的dubbo服务时，客户端生成 Proxy 实例，这个Proxy实例就是我们正常调用dubbo远程服务要生成的代理实例，然后消费者这方会把 Proxy 通过构造函数传给消费者方的Stub ，然后把 Stub 暴露给用户，Stub 可以决定要不要去调 Proxy。会通过代理类去完成这个调用，这样在Stub类中，就可以做一些额外的事，来对服务的调用过程进行优化或者容错的处理。
 
-  ![](http://7xjcj5.com1.z0.glb.clouddn.com/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20180524132735.png)
+  ![](https://api.superbed.cn/pic/5c3bfdd39dc6d6264c4a7c30)
 
 
 
