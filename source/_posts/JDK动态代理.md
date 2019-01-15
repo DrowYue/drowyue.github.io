@@ -170,4 +170,15 @@ public final class HelloServiceImpl extends Proxy implements HelloService {
 
 
 
+### 四、总结
 
+#### JDK动态代理特点
+
+- JDK动态代理只能对接口进行代理
+- 生成的代理类都会关联一个InvocationHandler对象，在代理类上调用接口中的方法均会最终调用InvocationHandler.invoke方法执行
+- 除了接口中声明的方法，代理类还会代理 java.lang.Object 中的hashCode、equals、toString三个方法
+
+#### 动态代理不足
+
++ JDK动态代理只能对接口进行代理，不能对类进行代理，所以实现类中非接口声明的其他方法是无法被代理的
++ JDK动态代理是基于反射调用的，执行效率较低
