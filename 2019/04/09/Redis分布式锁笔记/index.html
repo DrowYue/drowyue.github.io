@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next mist use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css" />
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.1.3" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png?v=5.1.3">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png?v=5.1.3">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png?v=5.1.3">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.3" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="分布式," />
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="本文内容来源于以下两篇文章： 基于Redis的分布式锁到底安全吗（上）？ 基于Redis的分布式锁到底安全吗（下）？ 一、 基于单Redis节点的分布式锁获取锁： 1SET resource_name my_random_value NX PX 30000  my_random_value是由客户端生成的一个随机字符串">
+<meta name="keywords" content="分布式">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis分布式锁笔记">
+<meta property="og:url" content="https://drowyue.github.io/2019/04/09/Redis分布式锁笔记/index.html">
+<meta property="og:site_name" content="DrowYue&#39;s Blog">
+<meta property="og:description" content="本文内容来源于以下两篇文章： 基于Redis的分布式锁到底安全吗（上）？ 基于Redis的分布式锁到底安全吗（下）？ 一、 基于单Redis节点的分布式锁获取锁： 1SET resource_name my_random_value NX PX 30000  my_random_value是由客户端生成的一个随机字符串，它要保证在足够长的一段时间内在所有客户端的所有获取锁的请求中都是唯一的 NX表">
+<meta property="og:locale" content="zh-Hans">
+<meta property="og:image" content="https://pic.superbed.cn/item/5c6553015f3e509ed96e95eb">
+<meta property="og:updated_time" content="2020-11-08T07:51:34.627Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Redis分布式锁笔记">
+<meta name="twitter:description" content="本文内容来源于以下两篇文章： 基于Redis的分布式锁到底安全吗（上）？ 基于Redis的分布式锁到底安全吗（下）？ 一、 基于单Redis节点的分布式锁获取锁： 1SET resource_name my_random_value NX PX 30000  my_random_value是由客户端生成的一个随机字符串，它要保证在足够长的一段时间内在所有客户端的所有获取锁的请求中都是唯一的 NX表">
+<meta name="twitter:image" content="https://pic.superbed.cn/item/5c6553015f3e509ed96e95eb">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Mist',
+    version: '5.1.3',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://drowyue.github.io/2019/04/09/Redis分布式锁笔记/"/>
+
+
+
+
+
+  <title>Redis分布式锁笔记 | DrowYue's Blog</title>
+  
+
+
+
+
+
+
+
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/"  class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">DrowYue's Blog</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-home"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://drowyue.github.io/2019/04/09/Redis分布式锁笔记/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="DrowYue">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="DrowYue's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Redis分布式锁笔记</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2019-04-09T16:50:00+08:00">
+                2019-04-09
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p><strong>本文内容来源于以下两篇文章：</strong></p>
+<p><a href="http://zhangtielei.com/posts/blog-redlock-reasoning.html" target="_blank" rel="noopener">基于Redis的分布式锁到底安全吗（上）？</a></p>
+<p><a href="http://zhangtielei.com/posts/blog-redlock-reasoning-part2.html" target="_blank" rel="noopener">基于Redis的分布式锁到底安全吗（下）？</a></p>
+<h4 id="一、-基于单Redis节点的分布式锁"><a href="#一、-基于单Redis节点的分布式锁" class="headerlink" title="一、 基于单Redis节点的分布式锁"></a>一、 基于单Redis节点的分布式锁</h4><p><strong>获取锁：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">SET resource_name my_random_value NX PX 30000</span><br></pre></td></tr></table></figure>
+<ul>
+<li>my_random_value是由客户端生成的一个随机字符串，它要保证在足够长的一段时间内在所有客户端的所有获取锁的请求中都是唯一的</li>
+<li>NX表示只有当resource_name对应的key值不存在的时候才能SET成功。这保证了只有第一个请求的客户端才能获得锁，而其它客户端在锁被释放之前都无法获得锁</li>
+<li>PX 30000表示这个锁有一个30秒的自动过期时间<br>​</li>
+</ul>
+<p><strong>释放锁：</strong></p>
+<p>执行以下Redis Lua脚本：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> redis.call(<span class="string">"get"</span>,KEYS[<span class="number">1</span>]) == ARGV[<span class="number">1</span>] <span class="keyword">then</span></span><br><span class="line"><span class="keyword">return</span> redis.call(<span class="string">"del"</span>,KEYS[<span class="number">1</span>])</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line"><span class="keyword">return</span> <span class="number">0</span></span><br><span class="line"><span class="keyword">end</span></span><br></pre></td></tr></table></figure>
+<p><strong>重点：</strong></p>
+<ul>
+<li>必须要设置一个过期时间。防止客户端获取锁后崩溃导致一直持有该锁</li>
+<li>获取锁时保证原子性</li>
+<li>获取锁时必须设置一个随机字符串my_random_value，保证了客户端释放的锁必须是自己持有的那个锁</li>
+<li>释放锁的操作必须使用Lua脚本来实现，保证原子性<br>​</li>
+</ul>
+<p><strong>问题：</strong></p>
+<p>【1】当客户端获取锁后，此时Redis Master节点宕机，系统触发failover自动切换到Slave节点，但由于Redis的主从复制是异步的，这可能导致在failover过程中丧失锁的安全性。考虑下面的执行序列：</p>
+<ol>
+<li>客户端1从Master获取了锁</li>
+<li>Master宕机了，存储锁的key还没有来得及同步到Slave上</li>
+<li>Slave升级为Master</li>
+<li>客户端2从新的Master获取到了对应同一个资源的锁</li>
+</ol>
+<p>【2】过期时间设置多长才合适。如果设置太短的话，锁就有可能在客户端完成对于共享资源的访问之前过期，从而失去保护；如果设置太长的话，一旦某个持有锁的客户端释放锁失败，那么就会导致所有其它客户端都无法获取锁，从而长时间内无法正常工作</p>
+<p>【3】如果持有锁的客户端长期阻塞导致锁过期（如发生Full GC），共享资源是不是已经失去了保护，如图</p>
+<p><img src="https://pic.superbed.cn/item/5c6553015f3e509ed96e95eb" alt=""></p>
+<p>​</p>
+<h4 id="二、-分布式锁Redlock"><a href="#二、-分布式锁Redlock" class="headerlink" title="二、 分布式锁Redlock"></a>二、 分布式锁Redlock</h4><p>分布式锁的算法Redlock，它基于N个完全独立的Redis节点（通常情况下N可以设置成5）</p>
+<p><strong>获取锁：</strong></p>
+<ol>
+<li><p>获取当前时间（毫秒数）</p>
+</li>
+<li><p>按顺序依次向N个Redis节点执行<strong>获取锁</strong>的操作。这个获取操作跟前面基于单Redis节点的<strong>获取锁</strong>的过程相同，包含随机字符串<code>my_random_value</code>，也包含过期时间(比如<code>PX 30000</code>，即锁的有效时间)。为了保证在某个Redis节点不可用的时候算法能够继续运行，这个<strong>获取锁</strong>的操作还有一个超时时间(time out)，它要远小于锁的有效时间（几十毫秒量级）。客户端在向某个Redis节点获取锁失败以后，应该立即尝试下一个Redis节点。这里的失败，应该包含任何类型的失败，比如该Redis节点不可用，或者该Redis节点上的锁已经被其它客户端持有（注：Redlock原文中这里只提到了Redis节点不可用的情况，但也应该包含其它的失败情况）</p>
+</li>
+<li><p>计算整个获取锁的过程总共消耗了多长时间，计算方法是用当前时间减去第1步记录的时间。如果客户端从大多数Redis节点（&gt;= N/2+1）成功获取到了锁，并且获取锁总共消耗的时间没有超过锁的有效时间(lock validity time)，那么这时客户端才认为最终获取锁成功；否则，认为最终获取锁失败</p>
+</li>
+<li><p>如果最终获取锁成功了，那么这个锁的有效时间应该重新计算，它等于最初的锁的有效时间减去第3步计算出来的获取锁消耗的时间</p>
+</li>
+<li><p>如果最终获取锁失败了（可能由于获取到锁的Redis节点个数少于N/2+1，或者整个获取锁的过程消耗的时间超过了锁的最初有效时间），那么客户端应该立即向所有Redis节点发起<strong>释放锁</strong>的操作（即前面介绍的Redis Lua脚本）</p>
+<p>​</p>
+</li>
+</ol>
+<p><strong>释放锁：</strong></p>
+<p>客户端向所有Redis节点发起<strong>释放锁</strong>的操作，不管这些节点当时在获取锁的时候成功与否</p>
+<p><strong>重点：</strong></p>
+<ul>
+<li>在最后<strong>释放锁</strong>的时候，antirez在算法描述中特别强调，客户端应该向所有Redis节点发起<strong>释放锁</strong>的操作。因为，客户端发给某个Redis节点的<strong>获取锁</strong>的请求成功到达了该Redis节点，这个节点也成功执行了<code>SET</code>操作，但是它返回给客户端的响应包却丢失了。这在客户端看来，获取锁的请求由于超时而失败了，但在Redis这边看来，加锁已经成功了。所以，释放锁的时候，客户端也应该对当时获取锁失败的那些Redis节点同样发起请求<br>​</li>
+</ul>
+<p><strong>问题：</strong></p>
+<p>【4】如果有节点发生崩溃重启，还是会对锁的安全性有影响的。具体的影响程度跟Redis对数据的持久化程度有关。假设一共有5个Redis节点：A, B, C, D, E。设想发生了如下的事件序列：</p>
+<ol>
+<li>客户端1成功锁住了A, B, C，<strong>获取锁</strong>成功（但D和E没有锁住）</li>
+<li>节点C崩溃重启了，但客户端1在C上加的锁没有持久化下来，丢失了</li>
+<li>节点C重启后，客户端2锁住了C, D, E，<strong>获取锁</strong>成功</li>
+<li>这样，客户端1和客户端2同时获得了锁（针对同一资源）</li>
+</ol>
+<p>【5】由于Redlock本质上是建立在一个同步模型之上，对系统的记时假设(timing assumption)有很强的要求，因此本身的安全性是不够的</p>
+<p><strong>解决方案：</strong></p>
+<p>【1】由于N个Redis节点中的大多数能正常工作就能保证Redlock正常工作，因此理论上它的可用性更高，单Redis节点的分布式锁在failover的时候锁失效的问题，在Redlock中不存在了</p>
+<p>【3】释放锁时会检查my_random_value，若不一致出现释放锁失败，客户端应该回滚事务</p>
+<p>【4】<strong>延迟重启</strong>(delayed restarts)的概念。也就是说，一个节点崩溃后，先不立即重启它，而是等待一段时间再重启，这段时间应该大于锁的有效时间(lock validity time)。这样的话，这个节点在重启前所参与的锁都会过期，它在重启后就不会对现有的锁造成影响</p>
+<p>【5】有争议，antirez认为在实际系统中是可以避免大的时钟跳跃的。当然，这取决于基础设施和运维方式</p>
+<h4 id="三、-基于ZooKeeper的分布式锁"><a href="#三、-基于ZooKeeper的分布式锁" class="headerlink" title="三、 基于ZooKeeper的分布式锁"></a>三、 基于ZooKeeper的分布式锁</h4><ul>
+<li>客户端尝试创建一个znode节点，比如<code>/lock</code>。那么第一个客户端就创建成功了，相当于拿到了锁；而其它的客户端会创建失败（znode已存在），获取锁失败。</li>
+<li>持有锁的客户端访问共享资源完成后，将znode删掉，这样其它客户端接下来就能来获取锁了。</li>
+<li>znode应该被创建成ephemeral的。这是znode的一个特性，它保证如果创建znode的那个客户端崩溃了，那么相应的znode会被自动删除。这保证了锁一定会被释放。</li>
+</ul>
+<p>看起来这个锁相当完美，没有Redlock过期时间的问题，而且能在需要的时候让锁自动释放。但仔细考察的话，并不尽然。</p>
+<p>ZooKeeper是怎么检测出某个客户端已经崩溃了呢？实际上，每个客户端都与ZooKeeper的某台服务器维护着一个Session，这个Session依赖定期的心跳(heartbeat)来维持。如果ZooKeeper长时间收不到客户端的心跳（这个时间称为Sesion的过期时间），那么它就认为Session过期了，通过这个Session所创建的所有的ephemeral类型的znode节点都会被自动删除。</p>
+<p>设想如下的执行序列：</p>
+<ol>
+<li>客户端1创建了znode节点<code>/lock</code>，获得了锁。</li>
+<li>客户端1进入了长时间的GC pause。</li>
+<li>客户端1连接到ZooKeeper的Session过期了。znode节点<code>/lock</code>被自动删除。</li>
+<li>客户端2创建了znode节点<code>/lock</code>，从而获得了锁。</li>
+<li>客户端1从GC pause中恢复过来，它仍然认为自己持有锁。</li>
+</ol>
+<p>最后，客户端1和客户端2都认为自己持有了锁，冲突了。这与之前Martin在文章中描述的由于GC pause导致的分布式锁失效的情况类似。</p>
+<p>看起来，用ZooKeeper实现的分布式锁也不一定就是安全的。该有的问题它还是有。但是，ZooKeeper作为一个专门为分布式应用提供方案的框架，它提供了一些非常好的特性，是Redis之类的方案所没有的。像前面提到的ephemeral类型的znode自动删除的功能就是一个例子。</p>
+<p>还有一个很有用的特性是ZooKeeper的watch机制。这个机制可以这样来使用，比如当客户端试图创建<code>/lock</code>的时候，发现它已经存在了，这时候创建失败，但客户端不一定就此对外宣告获取锁失败。客户端可以进入一种等待状态，等待当<code>/lock</code>节点被删除的时候，ZooKeeper通过watch机制通知它，这样它就可以继续完成创建操作（获取锁）。这可以让分布式锁在客户端用起来就像一个本地的锁一样：加锁失败就阻塞住，直到获取到锁为止。这样的特性Redlock就无法实现。</p>
+<p>小结一下，基于ZooKeeper的锁和基于Redis的锁相比在实现特性上有两个不同：</p>
+<ul>
+<li>在正常情况下，客户端可以持有锁任意长的时间，这可以确保它做完所有需要的资源访问操作之后再释放锁。这避免了基于Redis的锁对于有效时间(lock validity time)到底设置多长的两难问题。实际上，基于ZooKeeper的锁是依靠Session（心跳）来维持锁的持有状态的，而Redis不支持Sesion。</li>
+<li>基于ZooKeeper的锁支持在获取锁失败之后等待锁重新释放的事件。这让客户端对锁的使用更加灵活。</li>
+</ul>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/分布式/" rel="tag"># 分布式</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/01/14/JDK动态代理/" rel="next" title="JDK动态代理">
+                <i class="fa fa-chevron-left"></i> JDK动态代理
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+  
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">DrowYue</p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">4</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                
+                  <span class="site-state-item-count">3</span>
+                  <span class="site-state-item-name">标签</span>
+                
+              </div>
+            
+
+          </nav>
+
+          
+
+          <div class="links-of-author motion-element">
+            
+          </div>
+
+          
+          
+
+          
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-4"><a class="nav-link" href="#一、-基于单Redis节点的分布式锁"><span class="nav-number">1.</span> <span class="nav-text">一、 基于单Redis节点的分布式锁</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#二、-分布式锁Redlock"><span class="nav-number">2.</span> <span class="nav-text">二、 分布式锁Redlock</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#三、-基于ZooKeeper的分布式锁"><span class="nav-number">3.</span> <span class="nav-text">三、 基于ZooKeeper的分布式锁</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">DrowYue</span>
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Mist</a> v5.1.3</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+
+  
+  <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.3"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.3"></script>
+
+
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.3"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.3"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.3"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

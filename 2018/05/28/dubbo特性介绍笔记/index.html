@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next mist use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css" />
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.1.3" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png?v=5.1.3">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png?v=5.1.3">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png?v=5.1.3">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.3" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="dubbo," />
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="多协议 不同服务可以使用不同协议 1234567&amp;lt;!-- 多协议配置 --&amp;gt;&amp;lt;dubbo:protocol name=&quot;dubbo&quot; port=&quot;20880&quot; /&amp;gt;&amp;lt;dubbo:protocol name=&q">
+<meta name="keywords" content="dubbo">
+<meta property="og:type" content="article">
+<meta property="og:title" content="dubbo特性介绍笔记">
+<meta property="og:url" content="https://drowyue.github.io/2018/05/28/dubbo特性介绍笔记/index.html">
+<meta property="og:site_name" content="DrowYue&#39;s Blog">
+<meta property="og:description" content="多协议 不同服务可以使用不同协议 1234567&amp;lt;!-- 多协议配置 --&amp;gt;&amp;lt;dubbo:protocol name=&quot;dubbo&quot; port=&quot;20880&quot; /&amp;gt;&amp;lt;dubbo:protocol name=&quot;rmi&quot; port=&quot;1099&quot; /&amp;gt;&amp;lt;!-- 使用dubbo协议暴露服务 --&amp;gt;&amp;lt;dubbo:service interface=&quot;co">
+<meta property="og:locale" content="zh-Hans">
+<meta property="og:image" content="https://api.superbed.cn/pic/5c3bfd929dc6d6264c4a7c2e">
+<meta property="og:image" content="https://api.superbed.cn/pic/5c3bfdd39dc6d6264c4a7c30">
+<meta property="og:updated_time" content="2020-11-08T07:51:34.628Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="dubbo特性介绍笔记">
+<meta name="twitter:description" content="多协议 不同服务可以使用不同协议 1234567&amp;lt;!-- 多协议配置 --&amp;gt;&amp;lt;dubbo:protocol name=&quot;dubbo&quot; port=&quot;20880&quot; /&amp;gt;&amp;lt;dubbo:protocol name=&quot;rmi&quot; port=&quot;1099&quot; /&amp;gt;&amp;lt;!-- 使用dubbo协议暴露服务 --&amp;gt;&amp;lt;dubbo:service interface=&quot;co">
+<meta name="twitter:image" content="https://api.superbed.cn/pic/5c3bfd929dc6d6264c4a7c2e">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Mist',
+    version: '5.1.3',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://drowyue.github.io/2018/05/28/dubbo特性介绍笔记/"/>
+
+
+
+
+
+  <title>dubbo特性介绍笔记 | DrowYue's Blog</title>
+  
+
+
+
+
+
+
+
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/"  class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">DrowYue's Blog</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-home"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://drowyue.github.io/2018/05/28/dubbo特性介绍笔记/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="DrowYue">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="DrowYue's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">dubbo特性介绍笔记</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-05-28T14:53:00+08:00">
+                2018-05-28
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <h2 id="多协议"><a href="#多协议" class="headerlink" title="多协议"></a>多协议</h2><ul>
+<li><p>不同服务可以使用不同协议</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多协议配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"dubbo"</span> <span class="attr">port</span>=<span class="string">"20880"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"rmi"</span> <span class="attr">port</span>=<span class="string">"1099"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 使用dubbo协议暴露服务 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"helloService"</span> <span class="attr">protocol</span>=<span class="string">"dubbo"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 使用rmi协议暴露服务 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.DemoService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"demoService"</span> <span class="attr">protocol</span>=<span class="string">"rmi"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>多协议暴露服务</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多协议配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"dubbo"</span> <span class="attr">port</span>=<span class="string">"20880"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"hessian"</span> <span class="attr">port</span>=<span class="string">"8080"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 使用多个协议暴露服务 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">id</span>=<span class="string">"helloService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">protocol</span>=<span class="string">"dubbo,hessian"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<p>​</p>
+</li>
+</ul>
+<h2 id="多注册中心"><a href="#多注册中心" class="headerlink" title="多注册中心"></a>多注册中心</h2><ul>
+<li><p>多注册中心注册</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多注册中心配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"hangzhouRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.141.150:9090"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"qingdaoRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.141.151:9010"</span> <span class="attr">default</span>=<span class="string">"false"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 向多个注册中心注册 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"helloService"</span> <span class="attr">registry</span>=<span class="string">"hangzhouRegistry,qingdaoRegistry"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>不同服务使用不同注册中心</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多注册中心配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"chinaRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.141.150:9090"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"intlRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.154.177:9010"</span> <span class="attr">default</span>=<span class="string">"false"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 向中文站注册中心注册 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"helloService"</span> <span class="attr">registry</span>=<span class="string">"chinaRegistry"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 向国际站注册中心注册 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.DemoService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"demoService"</span> <span class="attr">registry</span>=<span class="string">"intlRegistry"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="分组聚合"><a href="#分组聚合" class="headerlink" title="分组聚合"></a>分组聚合</h2><ul>
+<li><p>配置</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">provider.xml:</span><br><span class="line"><span class="tag">&lt;<span class="name">bean</span> <span class="attr">id</span>=<span class="string">"mergeService"</span> <span class="attr">class</span>=<span class="string">"com.alibaba.dubbo.examples.merge.impl.MergeServiceImpl"</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">group</span>=<span class="string">"merge"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">ref</span>=<span class="string">"mergeService"</span>/&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">bean</span> <span class="attr">id</span>=<span class="string">"mergeService2"</span> <span class="attr">class</span>=<span class="string">"com.alibaba.dubbo.examples.merge.impl.MergeServiceImpl2"</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">group</span>=<span class="string">"merge2"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">ref</span>=<span class="string">"mergeService2"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">consumer.xml:</span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"mergeService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">group</span>=<span class="string">"*"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">List&lt;String&gt; result = mergeService.mergeResult();</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>合并结果扩展</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">com.alibaba.dubbo.rpc.cluster.merger.ArrayMerger</span><br><span class="line">com.alibaba.dubbo.rpc.cluster.merger.ListMerger</span><br><span class="line">com.alibaba.dubbo.rpc.cluster.merger.SetMerger</span><br><span class="line">com.alibaba.dubbo.rpc.cluster.merger.MapMerger</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>自定义扩展</p>
+<p>指定合并策略， 缺省根据返回值类型自动匹配， 如果同类型有两个合并器时，需指定合并器的名称</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@SPI</span></span><br><span class="line"> <span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">Merger</span>&lt;<span class="title">T</span>&gt; </span>&#123;</span><br><span class="line">     <span class="function">T <span class="title">merge</span><span class="params">(T... items)</span></span>;</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"mergeService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">group</span>=<span class="string">"*"</span> <span class="attr">merger</span>=<span class="string">"xxxMerger"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<p><a href="https://dubbo.gitbooks.io/dubbo-dev-book/content/impls/merger.html" target="_blank" rel="noopener">https://dubbo.gitbooks.io/dubbo-dev-book/content/impls/merger.html</a></p>
+</li>
+</ul>
+<h2 id="缓存"><a href="#缓存" class="headerlink" title="缓存"></a>缓存</h2><ul>
+<li><p>在消费者端进行结果缓存，用于加速热数据的访问速度， Dubbo提供声明式缓存，以减少用户加缓存的工作量</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">threadlocal=com.alibaba.dubbo.cache.support.threadlocal.ThreadLocalCacheFactory</span><br><span class="line">lru=com.alibaba.dubbo.cache.support.lru.LruCacheFactory</span><br><span class="line">jcache=com.alibaba.dubbo.cache.support.jcache.JCacheFactory</span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"cacheService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.cache.api.CacheService"</span> <span class="attr">cache</span>=<span class="string">"true"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>lru 基于最近最少使用原则删除多余缓存，保持最热的数据被缓存，默认保存1000。</p>
+</li>
+<li><p>threadlocal 当前线程缓存，比如一个页面渲染，用到很多 portal，每个 portal 都要去查用户信息，通过线程缓存，可以减少这种多余访问。</p>
+</li>
+<li><p>jcache 与 JSR107 集成，可以桥接各种缓存实现。</p>
+<p>​</p>
+</li>
+</ul>
+<h2 id="异步调用"><a href="#异步调用" class="headerlink" title="异步调用"></a>异步调用</h2><ul>
+<li><p>基于 NIO 的非阻塞实现并行调用，客户端不需要启动多线程即可完成并行调用多个远程服务， 相对多线程开销较小</p>
+<p><img src="https://api.superbed.cn/pic/5c3bfd929dc6d6264c4a7c2e" alt=""></p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"asyncService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.async.api.AsyncService"</span> <span class="attr">async</span>=<span class="string">"true"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="本地存根"><a href="#本地存根" class="headerlink" title="本地存根"></a>本地存根</h2><ul>
+<li><p>远程服务后，客户端通常只剩下接口，而实现全在服务器端，但提供方有些时候想在客户端也执行部分逻辑，那么就在服务消费者这一端提供了一个Stub类，然后当消费者调用provider方提供的dubbo服务时，客户端生成 Proxy 实例，这个Proxy实例就是我们正常调用dubbo远程服务要生成的代理实例，然后消费者这方会把 Proxy 通过构造函数传给消费者方的Stub ，然后把 Stub 暴露给用户，Stub 可以决定要不要去调 Proxy。会通过代理类去完成这个调用，这样在Stub类中，就可以做一些额外的事，来对服务的调用过程进行优化或者容错的处理。</p>
+<p><img src="https://api.superbed.cn/pic/5c3bfdd39dc6d6264c4a7c30" alt=""></p>
+</li>
+</ul>
+<h2 id="本地伪装"><a href="#本地伪装" class="headerlink" title="本地伪装"></a>本地伪装</h2><ul>
+<li><p>通常用于服务降级，比如某验权服务，当服务提供方全部挂掉后，客户端不抛出异常，而是通过 Mock 数据返回授权失败。</p>
+</li>
+<li><p>Mock是Stub 的一个子集，便于服务提供方在客户端执行容错逻辑</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">mock</span>=<span class="string">"true"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">mock</span>=<span class="string">"com.foo.BarServiceMock"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> com.foo;</span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">BarServiceMock</span> <span class="keyword">implements</span> <span class="title">BarService</span> </span>&#123;</span><br><span class="line">    <span class="function"><span class="keyword">public</span> String <span class="title">sayHello</span><span class="params">(String name)</span> </span>&#123;</span><br><span class="line">        <span class="comment">// 你可以伪造容错数据，此方法只在出现RpcException时被执行</span></span><br><span class="line">        <span class="keyword">return</span> <span class="string">"容错数据"</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Offer offer = <span class="keyword">null</span>;</span><br><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    offer = offerService.findOffer(offerId);</span><br><span class="line">&#125; <span class="keyword">catch</span> (RpcException e) &#123;</span><br><span class="line">   logger.error(e);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">mock</span>=<span class="string">"return null"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="并发控制"><a href="#并发控制" class="headerlink" title="并发控制"></a>并发控制</h2><ul>
+<li><p>客户端并发控制</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置com.test.UserServiceBo接口中所有方法，每个方法最多同时并发请求10个请求 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"userService"</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span> <span class="attr">actives</span>=<span class="string">"10"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置接口中的单个方法的并发请求个数 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"userService"</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span>&gt;</span></span><br><span class="line">	<span class="tag">&lt;<span class="name">dubbo:method</span> <span class="attr">name</span>=<span class="string">"sayHello"</span> <span class="attr">actives</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dubbo:reference</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>如果客户端请求该方法并发超过了10则客户端会被阻塞，等客户端并发请求数量少于10的时候，该请求才会被发送                        到服务提供方服务器，客户端并发控制是使用ActiveLimitFilter过滤器来控制的。</p>
+</li>
+<li><p>服务端并发控制</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置接口中所有方法，每个方法最多同时并发处理10个请求 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">ref</span>=<span class="string">"userService"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span>  <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span> <span class="attr">executes</span>=<span class="string">"10"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置接口中的单个方法的并发请求个数 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">ref</span>=<span class="string">"userService"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span> &gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">dubbo:method</span> <span class="attr">name</span>=<span class="string">"sayHello"</span> <span class="attr">executes</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dubbo:service</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>服务提供方设置并发数量后，如果同时请求数量大于了设置的executes的值，则会抛出异常，而不是像消费端设置actives时候，会等待。服务提供方并发控制是使用ExecuteLimitFilter过滤器实现的。</p>
+</li>
+<li><p>Load Balance 均衡</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">loadbalance</span>=<span class="string">"leastactive"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">loadbalance</span>=<span class="string">"leastactive"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<p>可选值：random，roundrobin，leastactive（随机、轮循、最少活跃连接数）</p>
+</li>
+</ul>
+<h2 id="连接控制"><a href="#连接控制" class="headerlink" title="连接控制"></a>连接控制</h2><ul>
+<li><p>服务端连接控制</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:provider</span> <span class="attr">protocol</span>=<span class="string">"dubbo"</span> <span class="attr">accepts</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"dubbo"</span> <span class="attr">accepts</span>=<span class="string">"10"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>客户端连接控制</p>
+<p>如果是长连接，例如 Dubbo 协议，connections 表示该服务对每个提供者建立的长连接数</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">connections</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">connections</span>=<span class="string">"10"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<p>com.alibaba.dubbo.rpc.protocol.dubbo.DubboProtocol#getClients</p>
+<p>com.alibaba.dubbo.rpc.protocol.dubbo.DubboInvoker#doInvoke</p>
+<p><a href="http://manzhizhen.iteye.com/blog/2354986" target="_blank" rel="noopener">Dubbo源代码实现五：RPC中的服务消费方实现</a></p>
+</li>
+</ul>
+<h2 id="线程栈自动dump"><a href="#线程栈自动dump" class="headerlink" title="线程栈自动dump"></a>线程栈自动dump</h2><ul>
+<li><p>当业务线程池满时，我们需要知道线程都在等待哪些资源、条件，以找到系统的瓶颈点或异常点。dubbo通过Jstack自动导出线程堆栈来保留现场，方便排查问题默认策略:</p>
+<ul>
+<li>导出路径，user.home标识的用户主目录</li>
+<li>导出间隔，最短间隔允许每隔10分钟导出一次</li>
+</ul>
+<p>指定导出路径：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"># dubbo.properties</span><br><span class="line">dubbo.application.dump.directory=/tmp</span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:application</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">dubbo:parameter</span> <span class="attr">key</span>=<span class="string">"dump.directory"</span> <span class="attr">value</span>=<span class="string">"/tmp"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dubbo:application</span>&gt;</span></span><br></pre></td></tr></table></figure></li>
+</ul>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/dubbo/" rel="tag"># dubbo</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2017/11/30/hello-world/" rel="next" title="Hello World">
+                <i class="fa fa-chevron-left"></i> Hello World
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/01/14/JDK动态代理/" rel="prev" title="JDK动态代理">
+                JDK动态代理 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+  
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">DrowYue</p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">4</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                
+                  <span class="site-state-item-count">3</span>
+                  <span class="site-state-item-name">标签</span>
+                
+              </div>
+            
+
+          </nav>
+
+          
+
+          <div class="links-of-author motion-element">
+            
+          </div>
+
+          
+          
+
+          
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#多协议"><span class="nav-number">1.</span> <span class="nav-text">多协议</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#多注册中心"><span class="nav-number">2.</span> <span class="nav-text">多注册中心</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#分组聚合"><span class="nav-number">3.</span> <span class="nav-text">分组聚合</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#缓存"><span class="nav-number">4.</span> <span class="nav-text">缓存</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#异步调用"><span class="nav-number">5.</span> <span class="nav-text">异步调用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#本地存根"><span class="nav-number">6.</span> <span class="nav-text">本地存根</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#本地伪装"><span class="nav-number">7.</span> <span class="nav-text">本地伪装</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#并发控制"><span class="nav-number">8.</span> <span class="nav-text">并发控制</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#连接控制"><span class="nav-number">9.</span> <span class="nav-text">连接控制</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#线程栈自动dump"><span class="nav-number">10.</span> <span class="nav-text">线程栈自动dump</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">DrowYue</span>
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Mist</a> v5.1.3</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+
+  
+  <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.3"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.3"></script>
+
+
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.3"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.3"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.3"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

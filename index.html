@@ -229,6 +229,587 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://drowyue.github.io/2019/04/09/Redis分布式锁笔记/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="DrowYue">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="DrowYue's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2019/04/09/Redis分布式锁笔记/" itemprop="url">Redis分布式锁笔记</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2019-04-09T16:50:00+08:00">
+                2019-04-09
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p><strong>本文内容来源于以下两篇文章：</strong></p>
+<p><a href="http://zhangtielei.com/posts/blog-redlock-reasoning.html" target="_blank" rel="noopener">基于Redis的分布式锁到底安全吗（上）？</a></p>
+<p><a href="http://zhangtielei.com/posts/blog-redlock-reasoning-part2.html" target="_blank" rel="noopener">基于Redis的分布式锁到底安全吗（下）？</a></p>
+<h4 id="一、-基于单Redis节点的分布式锁"><a href="#一、-基于单Redis节点的分布式锁" class="headerlink" title="一、 基于单Redis节点的分布式锁"></a>一、 基于单Redis节点的分布式锁</h4><p><strong>获取锁：</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">SET resource_name my_random_value NX PX 30000</span><br></pre></td></tr></table></figure>
+<ul>
+<li>my_random_value是由客户端生成的一个随机字符串，它要保证在足够长的一段时间内在所有客户端的所有获取锁的请求中都是唯一的</li>
+<li>NX表示只有当resource_name对应的key值不存在的时候才能SET成功。这保证了只有第一个请求的客户端才能获得锁，而其它客户端在锁被释放之前都无法获得锁</li>
+<li>PX 30000表示这个锁有一个30秒的自动过期时间<br>​</li>
+</ul>
+<p><strong>释放锁：</strong></p>
+<p>执行以下Redis Lua脚本：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> redis.call(<span class="string">"get"</span>,KEYS[<span class="number">1</span>]) == ARGV[<span class="number">1</span>] <span class="keyword">then</span></span><br><span class="line"><span class="keyword">return</span> redis.call(<span class="string">"del"</span>,KEYS[<span class="number">1</span>])</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line"><span class="keyword">return</span> <span class="number">0</span></span><br><span class="line"><span class="keyword">end</span></span><br></pre></td></tr></table></figure>
+<p><strong>重点：</strong></p>
+<ul>
+<li>必须要设置一个过期时间。防止客户端获取锁后崩溃导致一直持有该锁</li>
+<li>获取锁时保证原子性</li>
+<li>获取锁时必须设置一个随机字符串my_random_value，保证了客户端释放的锁必须是自己持有的那个锁</li>
+<li>释放锁的操作必须使用Lua脚本来实现，保证原子性<br>​</li>
+</ul>
+<p><strong>问题：</strong></p>
+<p>【1】当客户端获取锁后，此时Redis Master节点宕机，系统触发failover自动切换到Slave节点，但由于Redis的主从复制是异步的，这可能导致在failover过程中丧失锁的安全性。考虑下面的执行序列：</p>
+<ol>
+<li>客户端1从Master获取了锁</li>
+<li>Master宕机了，存储锁的key还没有来得及同步到Slave上</li>
+<li>Slave升级为Master</li>
+<li>客户端2从新的Master获取到了对应同一个资源的锁</li>
+</ol>
+<p>【2】过期时间设置多长才合适。如果设置太短的话，锁就有可能在客户端完成对于共享资源的访问之前过期，从而失去保护；如果设置太长的话，一旦某个持有锁的客户端释放锁失败，那么就会导致所有其它客户端都无法获取锁，从而长时间内无法正常工作</p>
+<p>【3】如果持有锁的客户端长期阻塞导致锁过期（如发生Full GC），共享资源是不是已经失去了保护，如图</p>
+<p><img src="https://pic.superbed.cn/item/5c6553015f3e509ed96e95eb" alt=""></p>
+<p>​</p>
+<h4 id="二、-分布式锁Redlock"><a href="#二、-分布式锁Redlock" class="headerlink" title="二、 分布式锁Redlock"></a>二、 分布式锁Redlock</h4><p>分布式锁的算法Redlock，它基于N个完全独立的Redis节点（通常情况下N可以设置成5）</p>
+<p><strong>获取锁：</strong></p>
+<ol>
+<li><p>获取当前时间（毫秒数）</p>
+</li>
+<li><p>按顺序依次向N个Redis节点执行<strong>获取锁</strong>的操作。这个获取操作跟前面基于单Redis节点的<strong>获取锁</strong>的过程相同，包含随机字符串<code>my_random_value</code>，也包含过期时间(比如<code>PX 30000</code>，即锁的有效时间)。为了保证在某个Redis节点不可用的时候算法能够继续运行，这个<strong>获取锁</strong>的操作还有一个超时时间(time out)，它要远小于锁的有效时间（几十毫秒量级）。客户端在向某个Redis节点获取锁失败以后，应该立即尝试下一个Redis节点。这里的失败，应该包含任何类型的失败，比如该Redis节点不可用，或者该Redis节点上的锁已经被其它客户端持有（注：Redlock原文中这里只提到了Redis节点不可用的情况，但也应该包含其它的失败情况）</p>
+</li>
+<li><p>计算整个获取锁的过程总共消耗了多长时间，计算方法是用当前时间减去第1步记录的时间。如果客户端从大多数Redis节点（&gt;= N/2+1）成功获取到了锁，并且获取锁总共消耗的时间没有超过锁的有效时间(lock validity time)，那么这时客户端才认为最终获取锁成功；否则，认为最终获取锁失败</p>
+</li>
+<li><p>如果最终获取锁成功了，那么这个锁的有效时间应该重新计算，它等于最初的锁的有效时间减去第3步计算出来的获取锁消耗的时间</p>
+</li>
+<li><p>如果最终获取锁失败了（可能由于获取到锁的Redis节点个数少于N/2+1，或者整个获取锁的过程消耗的时间超过了锁的最初有效时间），那么客户端应该立即向所有Redis节点发起<strong>释放锁</strong>的操作（即前面介绍的Redis Lua脚本）</p>
+<p>​</p>
+</li>
+</ol>
+<p><strong>释放锁：</strong></p>
+<p>客户端向所有Redis节点发起<strong>释放锁</strong>的操作，不管这些节点当时在获取锁的时候成功与否</p>
+<p><strong>重点：</strong></p>
+<ul>
+<li>在最后<strong>释放锁</strong>的时候，antirez在算法描述中特别强调，客户端应该向所有Redis节点发起<strong>释放锁</strong>的操作。因为，客户端发给某个Redis节点的<strong>获取锁</strong>的请求成功到达了该Redis节点，这个节点也成功执行了<code>SET</code>操作，但是它返回给客户端的响应包却丢失了。这在客户端看来，获取锁的请求由于超时而失败了，但在Redis这边看来，加锁已经成功了。所以，释放锁的时候，客户端也应该对当时获取锁失败的那些Redis节点同样发起请求<br>​</li>
+</ul>
+<p><strong>问题：</strong></p>
+<p>【4】如果有节点发生崩溃重启，还是会对锁的安全性有影响的。具体的影响程度跟Redis对数据的持久化程度有关。假设一共有5个Redis节点：A, B, C, D, E。设想发生了如下的事件序列：</p>
+<ol>
+<li>客户端1成功锁住了A, B, C，<strong>获取锁</strong>成功（但D和E没有锁住）</li>
+<li>节点C崩溃重启了，但客户端1在C上加的锁没有持久化下来，丢失了</li>
+<li>节点C重启后，客户端2锁住了C, D, E，<strong>获取锁</strong>成功</li>
+<li>这样，客户端1和客户端2同时获得了锁（针对同一资源）</li>
+</ol>
+<p>【5】由于Redlock本质上是建立在一个同步模型之上，对系统的记时假设(timing assumption)有很强的要求，因此本身的安全性是不够的</p>
+<p><strong>解决方案：</strong></p>
+<p>【1】由于N个Redis节点中的大多数能正常工作就能保证Redlock正常工作，因此理论上它的可用性更高，单Redis节点的分布式锁在failover的时候锁失效的问题，在Redlock中不存在了</p>
+<p>【3】释放锁时会检查my_random_value，若不一致出现释放锁失败，客户端应该回滚事务</p>
+<p>【4】<strong>延迟重启</strong>(delayed restarts)的概念。也就是说，一个节点崩溃后，先不立即重启它，而是等待一段时间再重启，这段时间应该大于锁的有效时间(lock validity time)。这样的话，这个节点在重启前所参与的锁都会过期，它在重启后就不会对现有的锁造成影响</p>
+<p>【5】有争议，antirez认为在实际系统中是可以避免大的时钟跳跃的。当然，这取决于基础设施和运维方式</p>
+<h4 id="三、-基于ZooKeeper的分布式锁"><a href="#三、-基于ZooKeeper的分布式锁" class="headerlink" title="三、 基于ZooKeeper的分布式锁"></a>三、 基于ZooKeeper的分布式锁</h4><ul>
+<li>客户端尝试创建一个znode节点，比如<code>/lock</code>。那么第一个客户端就创建成功了，相当于拿到了锁；而其它的客户端会创建失败（znode已存在），获取锁失败。</li>
+<li>持有锁的客户端访问共享资源完成后，将znode删掉，这样其它客户端接下来就能来获取锁了。</li>
+<li>znode应该被创建成ephemeral的。这是znode的一个特性，它保证如果创建znode的那个客户端崩溃了，那么相应的znode会被自动删除。这保证了锁一定会被释放。</li>
+</ul>
+<p>看起来这个锁相当完美，没有Redlock过期时间的问题，而且能在需要的时候让锁自动释放。但仔细考察的话，并不尽然。</p>
+<p>ZooKeeper是怎么检测出某个客户端已经崩溃了呢？实际上，每个客户端都与ZooKeeper的某台服务器维护着一个Session，这个Session依赖定期的心跳(heartbeat)来维持。如果ZooKeeper长时间收不到客户端的心跳（这个时间称为Sesion的过期时间），那么它就认为Session过期了，通过这个Session所创建的所有的ephemeral类型的znode节点都会被自动删除。</p>
+<p>设想如下的执行序列：</p>
+<ol>
+<li>客户端1创建了znode节点<code>/lock</code>，获得了锁。</li>
+<li>客户端1进入了长时间的GC pause。</li>
+<li>客户端1连接到ZooKeeper的Session过期了。znode节点<code>/lock</code>被自动删除。</li>
+<li>客户端2创建了znode节点<code>/lock</code>，从而获得了锁。</li>
+<li>客户端1从GC pause中恢复过来，它仍然认为自己持有锁。</li>
+</ol>
+<p>最后，客户端1和客户端2都认为自己持有了锁，冲突了。这与之前Martin在文章中描述的由于GC pause导致的分布式锁失效的情况类似。</p>
+<p>看起来，用ZooKeeper实现的分布式锁也不一定就是安全的。该有的问题它还是有。但是，ZooKeeper作为一个专门为分布式应用提供方案的框架，它提供了一些非常好的特性，是Redis之类的方案所没有的。像前面提到的ephemeral类型的znode自动删除的功能就是一个例子。</p>
+<p>还有一个很有用的特性是ZooKeeper的watch机制。这个机制可以这样来使用，比如当客户端试图创建<code>/lock</code>的时候，发现它已经存在了，这时候创建失败，但客户端不一定就此对外宣告获取锁失败。客户端可以进入一种等待状态，等待当<code>/lock</code>节点被删除的时候，ZooKeeper通过watch机制通知它，这样它就可以继续完成创建操作（获取锁）。这可以让分布式锁在客户端用起来就像一个本地的锁一样：加锁失败就阻塞住，直到获取到锁为止。这样的特性Redlock就无法实现。</p>
+<p>小结一下，基于ZooKeeper的锁和基于Redis的锁相比在实现特性上有两个不同：</p>
+<ul>
+<li>在正常情况下，客户端可以持有锁任意长的时间，这可以确保它做完所有需要的资源访问操作之后再释放锁。这避免了基于Redis的锁对于有效时间(lock validity time)到底设置多长的两难问题。实际上，基于ZooKeeper的锁是依靠Session（心跳）来维持锁的持有状态的，而Redis不支持Sesion。</li>
+<li>基于ZooKeeper的锁支持在获取锁失败之后等待锁重新释放的事件。这让客户端对锁的使用更加灵活。</li>
+</ul>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://drowyue.github.io/2019/01/14/JDK动态代理/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="DrowYue">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="DrowYue's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2019/01/14/JDK动态代理/" itemprop="url">JDK动态代理</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2019-01-14T20:45:00+08:00">
+                2019-01-14
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h3 id="一、代理模式"><a href="#一、代理模式" class="headerlink" title="一、代理模式"></a>一、代理模式</h3><p>代理模式（Proxy）：给某一个对象提供一个代理，并由代理对象控制对原对象的引用。</p>
+<p><img src="https://api.superbed.cn/pic/5c3c36429dc6d6264c4a7ca3" alt=""></p>
+<p>代理类Proxy与被代理类RealSubject均实现了Subject接口，并且Proxy持有RealSubject对象的引用。当Client调用Request()方法时，将调用Proxy.Request()，并由Proxy.Request()代理调用realSubject.Request()</p>
+<h3 id="二、JDK动态代理"><a href="#二、JDK动态代理" class="headerlink" title="二、JDK动态代理"></a>二、JDK动态代理</h3><p>JDK中基于反射实现了动态代理，可以在程序运行时生成代理类。其核心在于java.lang.reflect.InvocationHandler与 java.lang.reflect.Proxy，InvocationHandler是一个接口只包含invoke方法。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> Object <span class="title">invoke</span><span class="params">(Object proxy, Method method, Object[] args)</span> <span class="keyword">throws</span> Throwable</span>;</span><br></pre></td></tr></table></figure>
+<p>首先需要实现该接口，并且持有被代理类target的引用，当代理类的任何方法被调用时会转发到调用invoke方法。因此，可以在invoke方法中添加代理逻辑比如：打印日志、安全审计等，最后再通过反射调用被代理类的方法。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">InvocationHandlerImpl</span>&lt;<span class="title">T</span>&gt; <span class="keyword">implements</span> <span class="title">InvocationHandler</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> T target;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="title">InvocationHandlerImpl</span><span class="params">(T target)</span> </span>&#123;</span><br><span class="line">        <span class="keyword">this</span>.target = target;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> Object <span class="title">invoke</span><span class="params">(Object proxy, Method method, Object[] args)</span> <span class="keyword">throws</span> Throwable </span>&#123;</span><br><span class="line">        System.out.println(<span class="string">"before hello"</span>);</span><br><span class="line">        <span class="comment">// 调用被代理的方法</span></span><br><span class="line">        Object result = method.invoke(target, args);</span><br><span class="line">        System.out.println(<span class="string">"after hello"</span>);</span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而在程序运行时动态生成代理类则是依靠Proxy.newProxyInstance方法，该方法的参数分别为：</p>
+<ol>
+<li>ClassLoader loader，类加载器</li>
+<li>Class&lt;?&gt;[] interfaces，代理类需要实现的接口列表</li>
+<li>InvocationHandler h，上文实现的代理执行类</li>
+</ol>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Object <span class="title">getProxy</span><span class="params">(Object target)</span> </span>&#123;</span><br><span class="line">    InvocationHandlerImpl invocationHandler = <span class="keyword">new</span> InvocationHandlerImpl(target);</span><br><span class="line">    <span class="keyword">return</span> Proxy.newProxyInstance(target.getClass().getClassLoader(), </span><br><span class="line">                                  target.getClass().getInterfaces(), </span><br><span class="line">                                  invocationHandler);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>生成的代理类已经实现了指定的接口，因此使用起来与正常的实现没有任何区别<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> </span>&#123;</span><br><span class="line">    HelloService proxyHelloService = (HelloService) getProxy(<span class="keyword">new</span> HelloServiceImpl());</span><br><span class="line">    proxyHelloService.hello(<span class="string">"drowyue"</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>输出如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">before hello</span><br><span class="line">Hello drowyue</span><br><span class="line">after hello</span><br></pre></td></tr></table></figure>
+<h3 id="三、原理"><a href="#三、原理" class="headerlink" title="三、原理"></a>三、原理</h3><p>Proxy.newProxyInstance的核心代码如下，首先，getProxyClass0方法生成代理类，然后通过反射创建该代理类的对象并返回</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Object <span class="title">newProxyInstance</span><span class="params">(ClassLoader loader,</span></span></span><br><span class="line"><span class="function"><span class="params">                                      Class&lt;?&gt;[] interfaces,</span></span></span><br><span class="line"><span class="function"><span class="params">                                      InvocationHandler h)</span></span></span><br><span class="line"><span class="function">    <span class="keyword">throws</span> IllegalArgumentException</span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 生成代理类</span></span><br><span class="line">    Class&lt;?&gt; cl = getProxyClass0(loader, intfs);</span><br><span class="line">    <span class="comment">// 反射生成代理类对象，注意构造函数参数为InvocationHandler</span></span><br><span class="line">    <span class="keyword">final</span> Constructor&lt;?&gt; cons = cl.getConstructor(constructorParams);</span><br><span class="line">    <span class="keyword">final</span> InvocationHandler ih = h;</span><br><span class="line">    <span class="keyword">return</span> cons.newInstance(<span class="keyword">new</span> Object[]&#123;h&#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>进一步跟踪getProxyClass0方法，并将实际生成代理类保存并反编译如下。代理类继承Proxy并实现了HelloService，m0~m3四个变量分别为equals、toString、hashCode、hello，四个方法。每一个方法的实现都是调用super.h.invoke方法，而父类中的h变量正是前面定义的InvocationHandler，从而实现了将接口中每个方法均代理到InvocationHandler.invoke中。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="class"><span class="keyword">class</span> <span class="title">HelloServiceImpl</span> <span class="keyword">extends</span> <span class="title">Proxy</span> <span class="keyword">implements</span> <span class="title">HelloService</span> </span>&#123;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Method m1;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Method m2;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Method m3;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Method m0;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 生成参数为InvocationHandler的构造函数</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="title">HelloServiceImpl</span><span class="params">(InvocationHandler var1)</span> <span class="keyword">throws</span>  </span>&#123;</span><br><span class="line">        <span class="keyword">super</span>(var1);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">boolean</span> <span class="title">equals</span><span class="params">(Object var1)</span> <span class="keyword">throws</span>  </span>&#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> (Boolean)<span class="keyword">super</span>.h.invoke(<span class="keyword">this</span>, m1, <span class="keyword">new</span> Object[]&#123;var1&#125;);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (RuntimeException | Error var3) &#123;</span><br><span class="line">            <span class="keyword">throw</span> var3;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable var4) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> UndeclaredThrowableException(var4);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">final</span> String <span class="title">toString</span><span class="params">()</span> <span class="keyword">throws</span>  </span>&#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> (String)<span class="keyword">super</span>.h.invoke(<span class="keyword">this</span>, m2, (Object[])<span class="keyword">null</span>);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (RuntimeException | Error var2) &#123;</span><br><span class="line">            <span class="keyword">throw</span> var2;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable var3) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> UndeclaredThrowableException(var3);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">final</span> String <span class="title">hello</span><span class="params">(String var1)</span> <span class="keyword">throws</span>  </span>&#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> (String)<span class="keyword">super</span>.h.invoke(<span class="keyword">this</span>, m3, <span class="keyword">new</span> Object[]&#123;var1&#125;);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (RuntimeException | Error var3) &#123;</span><br><span class="line">            <span class="keyword">throw</span> var3;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable var4) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> UndeclaredThrowableException(var4);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">int</span> <span class="title">hashCode</span><span class="params">()</span> <span class="keyword">throws</span>  </span>&#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> (Integer)<span class="keyword">super</span>.h.invoke(<span class="keyword">this</span>, m0, (Object[])<span class="keyword">null</span>);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (RuntimeException | Error var2) &#123;</span><br><span class="line">            <span class="keyword">throw</span> var2;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable var3) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> UndeclaredThrowableException(var3);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">static</span> &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            m1 = Class.forName(<span class="string">"java.lang.Object"</span>).getMethod(<span class="string">"equals"</span>, Class.forName(<span class="string">"java.lang.Object"</span>));</span><br><span class="line">            m2 = Class.forName(<span class="string">"java.lang.Object"</span>).getMethod(<span class="string">"toString"</span>);</span><br><span class="line">            m3 = Class.forName(<span class="string">"com.drowyue.java.reflect.proxy.HelloService"</span>).getMethod(<span class="string">"hello"</span>, Class.forName(<span class="string">"java.lang.String"</span>));</span><br><span class="line">            m0 = Class.forName(<span class="string">"java.lang.Object"</span>).getMethod(<span class="string">"hashCode"</span>);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (NoSuchMethodException var2) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> NoSuchMethodError(var2.getMessage());</span><br><span class="line">        &#125; <span class="keyword">catch</span> (ClassNotFoundException var3) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> NoClassDefFoundError(var3.getMessage());</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="四、总结"><a href="#四、总结" class="headerlink" title="四、总结"></a>四、总结</h3><h4 id="JDK动态代理特点"><a href="#JDK动态代理特点" class="headerlink" title="JDK动态代理特点"></a>JDK动态代理特点</h4><ul>
+<li>JDK动态代理只能对接口进行代理</li>
+<li>生成的代理类都会关联一个InvocationHandler对象，在代理类上调用接口中的方法均会最终调用InvocationHandler.invoke方法执行</li>
+<li>除了接口中声明的方法，代理类还会代理 java.lang.Object 中的hashCode、equals、toString三个方法</li>
+</ul>
+<h4 id="动态代理不足"><a href="#动态代理不足" class="headerlink" title="动态代理不足"></a>动态代理不足</h4><ul>
+<li>JDK动态代理只能对接口进行代理，不能对类进行代理，所以实现类中非接口声明的其他方法是无法被代理的</li>
+<li>JDK动态代理是基于反射调用的，执行效率较低</li>
+</ul>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://drowyue.github.io/2018/05/28/dubbo特性介绍笔记/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="DrowYue">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="DrowYue's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2018/05/28/dubbo特性介绍笔记/" itemprop="url">dubbo特性介绍笔记</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2018-05-28T14:53:00+08:00">
+                2018-05-28
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="多协议"><a href="#多协议" class="headerlink" title="多协议"></a>多协议</h2><ul>
+<li><p>不同服务可以使用不同协议</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多协议配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"dubbo"</span> <span class="attr">port</span>=<span class="string">"20880"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"rmi"</span> <span class="attr">port</span>=<span class="string">"1099"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 使用dubbo协议暴露服务 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"helloService"</span> <span class="attr">protocol</span>=<span class="string">"dubbo"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 使用rmi协议暴露服务 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.DemoService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"demoService"</span> <span class="attr">protocol</span>=<span class="string">"rmi"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>多协议暴露服务</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多协议配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"dubbo"</span> <span class="attr">port</span>=<span class="string">"20880"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"hessian"</span> <span class="attr">port</span>=<span class="string">"8080"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 使用多个协议暴露服务 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">id</span>=<span class="string">"helloService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">protocol</span>=<span class="string">"dubbo,hessian"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<p>​</p>
+</li>
+</ul>
+<h2 id="多注册中心"><a href="#多注册中心" class="headerlink" title="多注册中心"></a>多注册中心</h2><ul>
+<li><p>多注册中心注册</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多注册中心配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"hangzhouRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.141.150:9090"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"qingdaoRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.141.151:9010"</span> <span class="attr">default</span>=<span class="string">"false"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 向多个注册中心注册 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"helloService"</span> <span class="attr">registry</span>=<span class="string">"hangzhouRegistry,qingdaoRegistry"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>不同服务使用不同注册中心</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 多注册中心配置 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"chinaRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.141.150:9090"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:registry</span> <span class="attr">id</span>=<span class="string">"intlRegistry"</span> <span class="attr">address</span>=<span class="string">"10.20.154.177:9010"</span> <span class="attr">default</span>=<span class="string">"false"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 向中文站注册中心注册 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.HelloService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"helloService"</span> <span class="attr">registry</span>=<span class="string">"chinaRegistry"</span> /&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 向国际站注册中心注册 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.hello.api.DemoService"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">ref</span>=<span class="string">"demoService"</span> <span class="attr">registry</span>=<span class="string">"intlRegistry"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="分组聚合"><a href="#分组聚合" class="headerlink" title="分组聚合"></a>分组聚合</h2><ul>
+<li><p>配置</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">provider.xml:</span><br><span class="line"><span class="tag">&lt;<span class="name">bean</span> <span class="attr">id</span>=<span class="string">"mergeService"</span> <span class="attr">class</span>=<span class="string">"com.alibaba.dubbo.examples.merge.impl.MergeServiceImpl"</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">group</span>=<span class="string">"merge"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">ref</span>=<span class="string">"mergeService"</span>/&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">bean</span> <span class="attr">id</span>=<span class="string">"mergeService2"</span> <span class="attr">class</span>=<span class="string">"com.alibaba.dubbo.examples.merge.impl.MergeServiceImpl2"</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">group</span>=<span class="string">"merge2"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">ref</span>=<span class="string">"mergeService2"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">consumer.xml:</span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"mergeService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">group</span>=<span class="string">"*"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">List&lt;String&gt; result = mergeService.mergeResult();</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>合并结果扩展</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">com.alibaba.dubbo.rpc.cluster.merger.ArrayMerger</span><br><span class="line">com.alibaba.dubbo.rpc.cluster.merger.ListMerger</span><br><span class="line">com.alibaba.dubbo.rpc.cluster.merger.SetMerger</span><br><span class="line">com.alibaba.dubbo.rpc.cluster.merger.MapMerger</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>自定义扩展</p>
+<p>指定合并策略， 缺省根据返回值类型自动匹配， 如果同类型有两个合并器时，需指定合并器的名称</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@SPI</span></span><br><span class="line"> <span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">Merger</span>&lt;<span class="title">T</span>&gt; </span>&#123;</span><br><span class="line">     <span class="function">T <span class="title">merge</span><span class="params">(T... items)</span></span>;</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"mergeService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.merge.api.MergeService"</span> <span class="attr">group</span>=<span class="string">"*"</span> <span class="attr">merger</span>=<span class="string">"xxxMerger"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<p><a href="https://dubbo.gitbooks.io/dubbo-dev-book/content/impls/merger.html" target="_blank" rel="noopener">https://dubbo.gitbooks.io/dubbo-dev-book/content/impls/merger.html</a></p>
+</li>
+</ul>
+<h2 id="缓存"><a href="#缓存" class="headerlink" title="缓存"></a>缓存</h2><ul>
+<li><p>在消费者端进行结果缓存，用于加速热数据的访问速度， Dubbo提供声明式缓存，以减少用户加缓存的工作量</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">threadlocal=com.alibaba.dubbo.cache.support.threadlocal.ThreadLocalCacheFactory</span><br><span class="line">lru=com.alibaba.dubbo.cache.support.lru.LruCacheFactory</span><br><span class="line">jcache=com.alibaba.dubbo.cache.support.jcache.JCacheFactory</span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"cacheService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.cache.api.CacheService"</span> <span class="attr">cache</span>=<span class="string">"true"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>lru 基于最近最少使用原则删除多余缓存，保持最热的数据被缓存，默认保存1000。</p>
+</li>
+<li><p>threadlocal 当前线程缓存，比如一个页面渲染，用到很多 portal，每个 portal 都要去查用户信息，通过线程缓存，可以减少这种多余访问。</p>
+</li>
+<li><p>jcache 与 JSR107 集成，可以桥接各种缓存实现。</p>
+<p>​</p>
+</li>
+</ul>
+<h2 id="异步调用"><a href="#异步调用" class="headerlink" title="异步调用"></a>异步调用</h2><ul>
+<li><p>基于 NIO 的非阻塞实现并行调用，客户端不需要启动多线程即可完成并行调用多个远程服务， 相对多线程开销较小</p>
+<p><img src="https://api.superbed.cn/pic/5c3bfd929dc6d6264c4a7c2e" alt=""></p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"asyncService"</span> <span class="attr">interface</span>=<span class="string">"com.alibaba.dubbo.examples.async.api.AsyncService"</span> <span class="attr">async</span>=<span class="string">"true"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="本地存根"><a href="#本地存根" class="headerlink" title="本地存根"></a>本地存根</h2><ul>
+<li><p>远程服务后，客户端通常只剩下接口，而实现全在服务器端，但提供方有些时候想在客户端也执行部分逻辑，那么就在服务消费者这一端提供了一个Stub类，然后当消费者调用provider方提供的dubbo服务时，客户端生成 Proxy 实例，这个Proxy实例就是我们正常调用dubbo远程服务要生成的代理实例，然后消费者这方会把 Proxy 通过构造函数传给消费者方的Stub ，然后把 Stub 暴露给用户，Stub 可以决定要不要去调 Proxy。会通过代理类去完成这个调用，这样在Stub类中，就可以做一些额外的事，来对服务的调用过程进行优化或者容错的处理。</p>
+<p><img src="https://api.superbed.cn/pic/5c3bfdd39dc6d6264c4a7c30" alt=""></p>
+</li>
+</ul>
+<h2 id="本地伪装"><a href="#本地伪装" class="headerlink" title="本地伪装"></a>本地伪装</h2><ul>
+<li><p>通常用于服务降级，比如某验权服务，当服务提供方全部挂掉后，客户端不抛出异常，而是通过 Mock 数据返回授权失败。</p>
+</li>
+<li><p>Mock是Stub 的一个子集，便于服务提供方在客户端执行容错逻辑</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">mock</span>=<span class="string">"true"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">mock</span>=<span class="string">"com.foo.BarServiceMock"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> com.foo;</span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">BarServiceMock</span> <span class="keyword">implements</span> <span class="title">BarService</span> </span>&#123;</span><br><span class="line">    <span class="function"><span class="keyword">public</span> String <span class="title">sayHello</span><span class="params">(String name)</span> </span>&#123;</span><br><span class="line">        <span class="comment">// 你可以伪造容错数据，此方法只在出现RpcException时被执行</span></span><br><span class="line">        <span class="keyword">return</span> <span class="string">"容错数据"</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Offer offer = <span class="keyword">null</span>;</span><br><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    offer = offerService.findOffer(offerId);</span><br><span class="line">&#125; <span class="keyword">catch</span> (RpcException e) &#123;</span><br><span class="line">   logger.error(e);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">mock</span>=<span class="string">"return null"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="并发控制"><a href="#并发控制" class="headerlink" title="并发控制"></a>并发控制</h2><ul>
+<li><p>客户端并发控制</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置com.test.UserServiceBo接口中所有方法，每个方法最多同时并发请求10个请求 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"userService"</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span> <span class="attr">actives</span>=<span class="string">"10"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置接口中的单个方法的并发请求个数 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">id</span>=<span class="string">"userService"</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span>&gt;</span></span><br><span class="line">	<span class="tag">&lt;<span class="name">dubbo:method</span> <span class="attr">name</span>=<span class="string">"sayHello"</span> <span class="attr">actives</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dubbo:reference</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>如果客户端请求该方法并发超过了10则客户端会被阻塞，等客户端并发请求数量少于10的时候，该请求才会被发送                        到服务提供方服务器，客户端并发控制是使用ActiveLimitFilter过滤器来控制的。</p>
+</li>
+<li><p>服务端并发控制</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置接口中所有方法，每个方法最多同时并发处理10个请求 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">ref</span>=<span class="string">"userService"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span>  <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span> <span class="attr">executes</span>=<span class="string">"10"</span>/&gt;</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">&lt;!-- 设置接口中的单个方法的并发请求个数 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.test.UserServiceBo"</span> <span class="attr">ref</span>=<span class="string">"userService"</span> <span class="attr">group</span>=<span class="string">"dubbo"</span> <span class="attr">version</span>=<span class="string">"1.0.0"</span> <span class="attr">timeout</span>=<span class="string">"3000"</span> &gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">dubbo:method</span> <span class="attr">name</span>=<span class="string">"sayHello"</span> <span class="attr">executes</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dubbo:service</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>服务提供方设置并发数量后，如果同时请求数量大于了设置的executes的值，则会抛出异常，而不是像消费端设置actives时候，会等待。服务提供方并发控制是使用ExecuteLimitFilter过滤器实现的。</p>
+</li>
+<li><p>Load Balance 均衡</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">loadbalance</span>=<span class="string">"leastactive"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">loadbalance</span>=<span class="string">"leastactive"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<p>可选值：random，roundrobin，leastactive（随机、轮循、最少活跃连接数）</p>
+</li>
+</ul>
+<h2 id="连接控制"><a href="#连接控制" class="headerlink" title="连接控制"></a>连接控制</h2><ul>
+<li><p>服务端连接控制</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:provider</span> <span class="attr">protocol</span>=<span class="string">"dubbo"</span> <span class="attr">accepts</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:protocol</span> <span class="attr">name</span>=<span class="string">"dubbo"</span> <span class="attr">accepts</span>=<span class="string">"10"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>客户端连接控制</p>
+<p>如果是长连接，例如 Dubbo 协议，connections 表示该服务对每个提供者建立的长连接数</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">dubbo:reference</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">connections</span>=<span class="string">"10"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:service</span> <span class="attr">interface</span>=<span class="string">"com.foo.BarService"</span> <span class="attr">connections</span>=<span class="string">"10"</span> /&gt;</span></span><br></pre></td></tr></table></figure>
+<p>com.alibaba.dubbo.rpc.protocol.dubbo.DubboProtocol#getClients</p>
+<p>com.alibaba.dubbo.rpc.protocol.dubbo.DubboInvoker#doInvoke</p>
+<p><a href="http://manzhizhen.iteye.com/blog/2354986" target="_blank" rel="noopener">Dubbo源代码实现五：RPC中的服务消费方实现</a></p>
+</li>
+</ul>
+<h2 id="线程栈自动dump"><a href="#线程栈自动dump" class="headerlink" title="线程栈自动dump"></a>线程栈自动dump</h2><ul>
+<li><p>当业务线程池满时，我们需要知道线程都在等待哪些资源、条件，以找到系统的瓶颈点或异常点。dubbo通过Jstack自动导出线程堆栈来保留现场，方便排查问题默认策略:</p>
+<ul>
+<li>导出路径，user.home标识的用户主目录</li>
+<li>导出间隔，最短间隔允许每隔10分钟导出一次</li>
+</ul>
+<p>指定导出路径：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"># dubbo.properties</span><br><span class="line">dubbo.application.dump.directory=/tmp</span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">dubbo:application</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">dubbo:parameter</span> <span class="attr">key</span>=<span class="string">"dump.directory"</span> <span class="attr">value</span>=<span class="string">"/tmp"</span> /&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dubbo:application</span>&gt;</span></span><br></pre></td></tr></table></figure></li>
+</ul>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://drowyue.github.io/2017/11/30/hello-world/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -390,7 +971,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">1</span>
+                  <span class="site-state-item-count">4</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -398,6 +979,15 @@
 
             
 
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                
+                  <span class="site-state-item-count">3</span>
+                  <span class="site-state-item-name">标签</span>
+                
+              </div>
             
 
           </nav>
@@ -433,7 +1023,7 @@
 
     <footer id="footer" class="footer">
       <div class="footer-inner">
-        <div class="copyright">&copy; <span itemprop="copyrightYear">2017</span>
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
   <span class="with-love">
     <i class="fa fa-user"></i>
   </span>
