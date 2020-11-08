@@ -79,4 +79,4 @@ theme: next
 deploy: 
    branch: master
    type: git
-   repo: https://github.com/DrowYue/drowyue.github.io.git
+   repo: git@github.com:DrowYue/drowyue.github.io.git
